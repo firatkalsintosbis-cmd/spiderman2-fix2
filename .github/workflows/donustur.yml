@@ -7,17 +7,16 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Dosyalari Al
-        uses: actions/checkout@v4
-
       - name: Java Kur
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Araclari Indir
+      - name: Araclari ve APK Dosyasini Indir
         run: |
+          pip install -q gdown
+          gdown --id 10OiX8sesUO0DPtTSl_VekpuPZRuRN-IJ -O base_32bit.apk
           wget -q https://bitbucket.org -O apktool.jar
           wget -q https://github.com -O signer.jar
 
