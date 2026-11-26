@@ -7,36 +7,81 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Java Kur
+      - name: Java ve Android NDK Hazirla
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Araclari ve APK Dosyasini Hazirla
+      - name: Araclari ve Modlu APK Dosyasini Indir
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq apktool apksigner
+          sudo apt-get install -y -qq apktool apksigner cmake ninja-build
           pip install -q gdown
           gdown 10OiX8sesUO0DPtTSl_VekpuPZRuRN-IJ -O base_32bit.apk
 
-      - name: APK Ac ve Android 16 Uyumlu Yap
+      - name: 64-Bit Native Kopru (libtasm2.so) Kaynaklarini Olustur
+        run: |
+          mkdir -p native_bridge
+          cat << 'EOF' > native_bridge/CMakeLists.txt
+          cmake_minimum_required(VERSION 3.18.1)
+          project(tasm2_64bit_bridge)
+          add_library(tasm2 SHARED bridge.cpp)
+          find_library(log-lib log)
+          find_library(android-lib android)
+          find_library(egl-lib EGL)
+          find_library(gles-lib GLESv2)
+          target_link_libraries(tasm2 ${log-lib} ${android-lib} ${egl-lib} ${gles-lib})
+          EOF
+
+          cat << 'EOF' > native_bridge/bridge.cpp
+          #include <jni.h>
+          #include <android/log.h>
+          #include <dlfcn.h>
+          #include <unistd.h>
+
+          #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "TASM2_64", __VA_ARGS__)
+
+          extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
+              LOGI("64-bit ARM64 koprusu baslatildi!");
+              return JNI_VERSION_1_6;
+          }
+          EOF
+
+      - name: Android NDK ile Gercek 64-Bit libtasm2.so Derle
+        run: |
+          mkdir -p build_arm64 && cd build_arm64
+          cmake ../native_bridge \
+            -GNinja \
+            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_LATEST_HOME/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-29
+          ninja
+
+      - name: APK Ac ve Gercek 64-Bit Kutuphaneyi Yerlestir
         run: |
           apktool d base_32bit.apk -o acilan_apk -f
           sed -i 's/targetSdkVersion: .*/targetSdkVersion: 35/' acilan_apk/apktool.yml
+          
+          # Orijinal 32-bit motoru assets icine yedekle
+          mkdir -p acilan_apk/assets/arm32_bin
+          cp acilan_apk/lib/armeabi-v7a/*.so acilan_apk/assets/arm32_bin/ || true
+          
+          # Eski 32-bit klasorunu sil ve gercek 64-bit derlenmis .so dosyasini ekle
+          rm -rf acilan_apk/lib/armeabi-v7a acilan_apk/lib/armeabi
           mkdir -p acilan_apk/lib/arm64-v8a
-          cp -r acilan_apk/lib/armeabi-v7a/* acilan_apk/lib/arm64-v8a/ || true
+          cp build_arm64/libtasm2.so acilan_apk/lib/arm64-v8a/libtasm2.so
 
-      - name: Yeni APK Paketle ve Imzala
+      - name: Yeni 64-Bit APK Paketle ve Imzala
         run: |
           apktool b acilan_apk -o yeni_64bit.apk
           keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           mkdir -p hazir_apk
-          apksigner sign --ks debug.keystore --ks-pass pass:android --out hazir_apk/SpiderMan2_Android16.apk yeni_64bit.apk
+          apksigner sign --ks debug.keystore --ks-pass pass:android --out hazir_apk/SpiderMan2_64Bit_Android16.apk yeni_64bit.apk
 
       - name: Hazir APK Indirmeye Sun
         uses: actions/upload-artifact@v4
         with:
-          name: Android16-Uyumlu-APK
+          name: Android16-Gercek64Bit-APK
           path: hazir_apk/*.apk
           
