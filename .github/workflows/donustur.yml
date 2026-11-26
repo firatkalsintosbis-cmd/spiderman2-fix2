@@ -16,7 +16,7 @@ jobs:
       - name: Araclari ve APK Dosyasini Indir
         run: |
           pip install -q gdown
-          gdown --id 10OiX8sesUO0DPtTSl_VekpuPZRuRN-IJ -O base_32bit.apk
+          gdown 10OiX8sesUO0DPtTSl_VekpuPZRuRN-IJ -O base_32bit.apk
           wget -q https://bitbucket.org -O apktool.jar
           wget -q https://github.com -O signer.jar
 
