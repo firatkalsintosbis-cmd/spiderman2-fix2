@@ -22,7 +22,8 @@ jobs:
 
       - name: Unicorn ARM32 Emulator Kaynak Kodunu Cek
         run: |
-          git clone --depth 1 https://github.com
+          REPO="unicorn-engine/unicorn.git"
+          git clone --depth 1 "https://github.com{REPO}" unicorn
 
       - name: 64-Bit ARM32-to-ARM64 Kopru Kaynaklarini Olustur
         run: |
@@ -48,8 +49,6 @@ jobs:
           cat << 'EOF' > native_bridge/bridge.cpp
           #include <jni.h>
           #include <android/log.h>
-          #include <android/asset_manager.h>
-          #include <android/asset_manager_jni.h>
           #include <unicorn/unicorn.h>
 
           #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "TASM2_EMU64", __VA_ARGS__)
