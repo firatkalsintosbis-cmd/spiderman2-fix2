@@ -1,0 +1,41 @@
+name: APK 64-Bit Donusturucu
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dosyalari Al
+        uses: actions/checkout@v4
+
+      - name: Java Kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Araclari Indir
+        run: |
+          wget -q https://bitbucket.org -O apktool.jar
+          wget -q https://github.com -O signer.jar
+
+      - name: APK Ac ve Android 16 Uyumlu Yap
+        run: |
+          java -jar apktool.jar d base_32bit.apk -o acilan_apk -f
+          sed -i 's/targetSdkVersion: .*/targetSdkVersion: 35/' acilan_apk/apktool.yml
+          mkdir -p acilan_apk/lib/arm64-v8a
+          cp -r acilan_apk/lib/armeabi-v7a/* acilan_apk/lib/arm64-v8a/ || true
+
+      - name: Yeni APK Paketle ve Imzala
+        run: |
+          java -jar apktool.jar b acilan_apk -o yeni_64bit.apk
+          java -jar signer.jar --apks yeni_64bit.apk --out hazir_apk
+
+      - name: Hazir APK Indirmeye Sun
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android16-Uyumlu-APK
+          path: hazir_apk/*.apk
+          
