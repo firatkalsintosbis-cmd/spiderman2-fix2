@@ -16,39 +16,56 @@ jobs:
       - name: Araclari ve Modlu APK Dosyasini Indir
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq apktool apksigner cmake ninja-build
+          sudo apt-get install -y -qq apktool apksigner cmake ninja-build git
           pip install -q gdown
           gdown 10OiX8sesUO0DPtTSl_VekpuPZRuRN-IJ -O base_32bit.apk
 
-      - name: 64-Bit Native Kopru (libtasm2.so) Kaynaklarini Olustur
+      - name: Unicorn ARM32 Emulator Kaynak Kodunu Cek
+        run: |
+          git clone --depth 1 https://github.com
+
+      - name: 64-Bit ARM32-to-ARM64 Kopru Kaynaklarini Olustur
         run: |
           mkdir -p native_bridge
           cat << 'EOF' > native_bridge/CMakeLists.txt
           cmake_minimum_required(VERSION 3.18.1)
-          project(tasm2_64bit_bridge)
+          project(tasm2_64bit_emu)
+          
+          set(UNICORN_ARCH "arm" CACHE STRING "" FORCE)
+          set(UNICORN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+          add_subdirectory(../unicorn unicorn_build)
+          
           add_library(tasm2 SHARED bridge.cpp)
+          target_include_directories(tasm2 PRIVATE ../unicorn/include)
+          
           find_library(log-lib log)
           find_library(android-lib android)
           find_library(egl-lib EGL)
           find_library(gles-lib GLESv2)
-          target_link_libraries(tasm2 ${log-lib} ${android-lib} ${egl-lib} ${gles-lib})
+          target_link_libraries(tasm2 unicorn ${log-lib} ${android-lib} ${egl-lib} ${gles-lib})
           EOF
 
           cat << 'EOF' > native_bridge/bridge.cpp
           #include <jni.h>
           #include <android/log.h>
-          #include <dlfcn.h>
-          #include <unistd.h>
+          #include <android/asset_manager.h>
+          #include <android/asset_manager_jni.h>
+          #include <unicorn/unicorn.h>
 
-          #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "TASM2_64", __VA_ARGS__)
+          #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "TASM2_EMU64", __VA_ARGS__)
+
+          uc_engine *uc = nullptr;
 
           extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
-              LOGI("64-bit ARM64 koprusu baslatildi!");
+              uc_err err = uc_open(UC_ARCH_ARM, UC_MODE_ARM, &uc);
+              if (err == UC_ERR_OK) {
+                  LOGI("Unicorn ARM32 Sanal Islemci 64-bit uzerinde baslatildi!");
+              }
               return JNI_VERSION_1_6;
           }
           EOF
 
-      - name: Android NDK ile Gercek 64-Bit libtasm2.so Derle
+      - name: Android NDK ile Unicorn Entegreli 64-Bit libtasm2.so Derle
         run: |
           mkdir -p build_arm64 && cd build_arm64
           cmake ../native_bridge \
@@ -58,30 +75,28 @@ jobs:
             -DANDROID_PLATFORM=android-29
           ninja
 
-      - name: APK Ac ve Gercek 64-Bit Kutuphaneyi Yerlestir
+      - name: APK Ac ve Emulatorlu 64-Bit Kutuphaneyi Yerlestir
         run: |
           apktool d base_32bit.apk -o acilan_apk -f
           sed -i 's/targetSdkVersion: .*/targetSdkVersion: 35/' acilan_apk/apktool.yml
           
-          # Orijinal 32-bit motoru assets icine yedekle
           mkdir -p acilan_apk/assets/arm32_bin
           cp acilan_apk/lib/armeabi-v7a/*.so acilan_apk/assets/arm32_bin/ || true
           
-          # Eski 32-bit klasorunu sil ve gercek 64-bit derlenmis .so dosyasini ekle
           rm -rf acilan_apk/lib/armeabi-v7a acilan_apk/lib/armeabi
           mkdir -p acilan_apk/lib/arm64-v8a
           cp build_arm64/libtasm2.so acilan_apk/lib/arm64-v8a/libtasm2.so
 
-      - name: Yeni 64-Bit APK Paketle ve Imzala
+      - name: Yeni APK Paketle ve Imzala
         run: |
           apktool b acilan_apk -o yeni_64bit.apk
           keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           mkdir -p hazir_apk
-          apksigner sign --ks debug.keystore --ks-pass pass:android --out hazir_apk/SpiderMan2_64Bit_Android16.apk yeni_64bit.apk
+          apksigner sign --ks debug.keystore --ks-pass pass:android --out hazir_apk/SpiderMan2_Emu64_Android16.apk yeni_64bit.apk
 
       - name: Hazir APK Indirmeye Sun
         uses: actions/upload-artifact@v4
         with:
-          name: Android16-Gercek64Bit-APK
+          name: Android16-Emu64-APK
           path: hazir_apk/*.apk
           
