@@ -7,6 +7,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Unicorn ARM32 Emulator Kaynak Kodunu Cek
+        uses: actions/checkout@v4
+        with:
+          repository: unicorn-engine/unicorn
+          path: unicorn
+
       - name: Java ve Android NDK Hazirla
         uses: actions/setup-java@v4
         with:
@@ -16,14 +22,9 @@ jobs:
       - name: Araclari ve Modlu APK Dosyasini Indir
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq apktool apksigner cmake ninja-build git
+          sudo apt-get install -y -qq apktool apksigner cmake ninja-build
           pip install -q gdown
           gdown 10OiX8sesUO0DPtTSl_VekpuPZRuRN-IJ -O base_32bit.apk
-
-      - name: Unicorn ARM32 Emulator Kaynak Kodunu Cek
-        run: |
-          REPO="unicorn-engine/unicorn.git"
-          git clone --depth 1 "https://github.com{REPO}" unicorn
 
       - name: 64-Bit ARM32-to-ARM64 Kopru Kaynaklarini Olustur
         run: |
