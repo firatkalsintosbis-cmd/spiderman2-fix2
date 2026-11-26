@@ -13,26 +13,26 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Araclari ve APK Dosyasini Indir
+      - name: Araclari ve APK Dosyasini Hazirla
         run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq apktool apksigner
           pip install -q gdown
           gdown 10OiX8sesUO0DPtTSl_VekpuPZRuRN-IJ -O base_32bit.apk
-          APKTOOL_URL=$(curl -s https://github.com | grep "browser_download_url.*\.jar" | cut -d '"' -f 4 | head -n 1)
-          curl -L -s "$APKTOOL_URL" -o apktool.jar
-          SIGNER_URL=$(curl -s https://github.com | grep "browser_download_url.*\.jar" | cut -d '"' -f 4 | head -n 1)
-          curl -L -s "$SIGNER_URL" -o signer.jar
 
       - name: APK Ac ve Android 16 Uyumlu Yap
         run: |
-          java -jar apktool.jar d base_32bit.apk -o acilan_apk -f
+          apktool d base_32bit.apk -o acilan_apk -f
           sed -i 's/targetSdkVersion: .*/targetSdkVersion: 35/' acilan_apk/apktool.yml
           mkdir -p acilan_apk/lib/arm64-v8a
           cp -r acilan_apk/lib/armeabi-v7a/* acilan_apk/lib/arm64-v8a/ || true
 
       - name: Yeni APK Paketle ve Imzala
         run: |
-          java -jar apktool.jar b acilan_apk -o yeni_64bit.apk
-          java -jar signer.jar --apks yeni_64bit.apk --out hazir_apk
+          apktool b acilan_apk -o yeni_64bit.apk
+          keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          mkdir -p hazir_apk
+          apksigner sign --ks debug.keystore --ks-pass pass:android --out hazir_apk/SpiderMan2_Android16.apk yeni_64bit.apk
 
       - name: Hazir APK Indirmeye Sun
         uses: actions/upload-artifact@v4
