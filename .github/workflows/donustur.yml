@@ -17,8 +17,10 @@ jobs:
         run: |
           pip install -q gdown
           gdown 10OiX8sesUO0DPtTSl_VekpuPZRuRN-IJ -O base_32bit.apk
-          wget -q https://github.com -O apktool.jar
-          wget -q https://github.com -O signer.jar
+          APKTOOL_URL=$(curl -s https://github.com | grep "browser_download_url.*\.jar" | cut -d '"' -f 4 | head -n 1)
+          curl -L -s "$APKTOOL_URL" -o apktool.jar
+          SIGNER_URL=$(curl -s https://github.com | grep "browser_download_url.*\.jar" | cut -d '"' -f 4 | head -n 1)
+          curl -L -s "$SIGNER_URL" -o signer.jar
 
       - name: APK Ac ve Android 16 Uyumlu Yap
         run: |
