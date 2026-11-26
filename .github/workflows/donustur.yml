@@ -17,7 +17,7 @@ jobs:
         run: |
           pip install -q gdown
           gdown 10OiX8sesUO0DPtTSl_VekpuPZRuRN-IJ -O base_32bit.apk
-          wget -q https://bitbucket.org -O apktool.jar
+          wget -q https://github.com -O apktool.jar
           wget -q https://github.com -O signer.jar
 
       - name: APK Ac ve Android 16 Uyumlu Yap
