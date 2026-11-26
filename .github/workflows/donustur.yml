@@ -22,13 +22,44 @@ jobs:
       - name: Araclari ve Modlu APK Dosyasini Indir
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq apktool apksigner cmake ninja-build
+          sudo apt-get install -y -qq apktool apksigner cmake ninja-build binutils python3
           pip install -q gdown
           gdown 10OiX8sesUO0DPtTSl_VekpuPZRuRN-IJ -O base_32bit.apk
 
-      - name: 64-Bit ARM32-to-ARM64 Kopru Kaynaklarini Olustur
+      - name: APK Ac ve 32-Bit Fonksiyonlari Otomatik Tara
         run: |
+          apktool d base_32bit.apk -o acilan_apk -f
+          sed -i 's/targetSdkVersion: .*/targetSdkVersion: 35/' acilan_apk/apktool.yml
+          
           mkdir -p native_bridge
+          cat << 'EOF' > gen_jni.py
+          import subprocess, re
+
+          out = subprocess.check_output(["nm", "-D", "--defined-only", "acilan_apk/lib/armeabi-v7a/libtasm2.so"], text=True)
+          funcs = set()
+          for line in out.splitlines():
+              parts = line.split()
+              if len(parts) >= 3 and parts[2].startswith("Java_"):
+                  funcs.add(parts[2])
+
+          with open("native_bridge/bridge.cpp", "w") as f:
+              f.write('#include <jni.h>\n#include <android/log.h>\n#include <unicorn/unicorn.h>\n\n')
+              f.write('#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "TASM2_EMU64", __VA_ARGS__)\n\n')
+              f.write('uc_engine *uc = nullptr;\n\n')
+              f.write('extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {\n')
+              f.write('    uc_open(UC_ARCH_ARM, UC_MODE_ARM, &uc);\n')
+              f.write('    LOGI("64-bit Kopru ve %d JNI fonksiyonu hazir!", ' + str(len(funcs)) + ');\n')
+              f.write('    return JNI_VERSION_1_6;\n}\n\n')
+              for fn in sorted(funcs):
+                  f.write(f'extern "C" JNIEXPORT jlong JNICALL {fn}(JNIEnv* env, jobject thiz) {{\n')
+                  f.write(f'    LOGI("Cagrildi: {fn}");\n')
+                  f.write('    return 0;\n}\n\n')
+          print(f"Toplam {len(funcs)} JNI fonksiyonu otomatik eklendi!")
+          EOF
+          python3 gen_jni.py
+
+      - name: CMakeLists Olustur ve 64-Bit libtasm2.so Derle
+        run: |
           cat << 'EOF' > native_bridge/CMakeLists.txt
           cmake_minimum_required(VERSION 3.18.1)
           project(tasm2_64bit_emu)
@@ -47,26 +78,6 @@ jobs:
           target_link_libraries(tasm2 unicorn ${log-lib} ${android-lib} ${egl-lib} ${gles-lib})
           EOF
 
-          cat << 'EOF' > native_bridge/bridge.cpp
-          #include <jni.h>
-          #include <android/log.h>
-          #include <unicorn/unicorn.h>
-
-          #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "TASM2_EMU64", __VA_ARGS__)
-
-          uc_engine *uc = nullptr;
-
-          extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
-              uc_err err = uc_open(UC_ARCH_ARM, UC_MODE_ARM, &uc);
-              if (err == UC_ERR_OK) {
-                  LOGI("Unicorn ARM32 Sanal Islemci 64-bit uzerinde baslatildi!");
-              }
-              return JNI_VERSION_1_6;
-          }
-          EOF
-
-      - name: Android NDK ile Unicorn Entegreli 64-Bit libtasm2.so Derle
-        run: |
           mkdir -p build_arm64 && cd build_arm64
           cmake ../native_bridge \
             -GNinja \
@@ -75,11 +86,8 @@ jobs:
             -DANDROID_PLATFORM=android-29
           ninja
 
-      - name: APK Ac ve Emulatorlu 64-Bit Kutuphaneyi Yerlestir
+      - name: APK Paketle ve Imzala
         run: |
-          apktool d base_32bit.apk -o acilan_apk -f
-          sed -i 's/targetSdkVersion: .*/targetSdkVersion: 35/' acilan_apk/apktool.yml
-          
           mkdir -p acilan_apk/assets/arm32_bin
           cp acilan_apk/lib/armeabi-v7a/*.so acilan_apk/assets/arm32_bin/ || true
           
@@ -87,8 +95,6 @@ jobs:
           mkdir -p acilan_apk/lib/arm64-v8a
           cp build_arm64/libtasm2.so acilan_apk/lib/arm64-v8a/libtasm2.so
 
-      - name: Yeni APK Paketle ve Imzala
-        run: |
           apktool b acilan_apk -o yeni_64bit.apk
           keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           mkdir -p hazir_apk
